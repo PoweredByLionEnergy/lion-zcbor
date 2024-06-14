@@ -17,6 +17,23 @@
 extern "C" {
 #endif
 
+#define ZCBOR_STRINGIFY_PRE(x) #x
+#define ZCBOR_STRINGIFY(s) ZCBOR_STRINGIFY_PRE(s)
+
+#define ZCBOR_VERSION_MAJOR 0
+#define ZCBOR_VERSION_MINOR 8
+#define ZCBOR_VERSION_BUGFIX 99
+
+/** The version string with dots and not prefix. */
+#define ZCBOR_VERSION_STR   ZCBOR_STRINGIFY(ZCBOR_VERSION_MAJOR) \
+			"." ZCBOR_STRINGIFY(ZCBOR_VERSION_MINOR) \
+			"." ZCBOR_STRINGIFY(ZCBOR_VERSION_BUGFIX)
+
+/** Monotonically increasing integer representing the version. */
+#define ZCBOR_VERSION    ((ZCBOR_VERSION_MAJOR << 24) \
+			+ (ZCBOR_VERSION_MINOR << 16) \
+			+ (ZCBOR_VERSION_BUGFIX << 8))
+
 /** Convenience type that allows pointing to strings directly inside the payload
  *  without the need to copy out.
  */
@@ -40,53 +57,24 @@ struct zcbor_string_fragment {
 /** Size to use in struct zcbor_string_fragment when the real size is unknown. */
 #define ZCBOR_STRING_FRAGMENT_UNKNOWN_LENGTH SIZE_MAX
 
-#ifdef ZCBOR_VERBOSE
-#include <zephyr/sys/printk.h>
-#define zcbor_trace() (printk("bytes left: %zu, byte: 0x%x, elem_count: 0x%" PRIxFAST32 ", err: %d, %s:%d\n",\
-	(size_t)state->payload_end - (size_t)state->payload, *state->payload, state->elem_count, \
-	state->constant_state ? state->constant_state->error : 0, __FILE__, __LINE__))
-
-#define zcbor_print_assert(expr, ...) \
-do { \
-	printk("ASSERTION \n  \"" #expr \
-		"\"\nfailed at %s:%d with message:\n  ", \
-		__FILE__, __LINE__); \
-	printk(__VA_ARGS__);\
-} while(0)
-#define zcbor_print(...) printk(__VA_ARGS__)
-#else
-#define zcbor_trace() ((void)state)
-#define zcbor_print_assert(...)
-#define zcbor_print(...)
-#endif
-
-#ifdef ZCBOR_ASSERTS
-#define zcbor_assert(expr, ...) \
-do { \
-	if (!(expr)) { \
-		zcbor_print_assert(expr, __VA_ARGS__); \
-		ZCBOR_FAIL(); \
-	} \
-} while(0)
-#define zcbor_assert_state(expr, ...) \
-do { \
-	if (!(expr)) { \
-		zcbor_print_assert(expr, __VA_ARGS__); \
-		ZCBOR_ERR(ZCBOR_ERR_ASSERTION); \
-	} \
-} while(0)
-#else
-#define zcbor_assert(expr, ...)
-#define zcbor_assert_state(expr, ...)
-#endif
-
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b) (((a) < (b)) ? (b) : (a))
 #endif
 
 #ifndef ZCBOR_ARRAY_SIZE
 #define ZCBOR_ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
+
+/* Endian-dependent offset of smaller integer in a bigger one. */
+#ifdef ZCBOR_BIG_ENDIAN
+#define ZCBOR_ECPY_OFFS(dst_len, src_len) ((dst_len) - (src_len))
+#else
+#define ZCBOR_ECPY_OFFS(dst_len, src_len) (0)
+#endif /* ZCBOR_BIG_ENDIAN */
 
 #if SIZE_MAX <= UINT64_MAX
 /** The ZCBOR_SUPPORTS_SIZE_T will be defined if processing of size_t type variables directly
@@ -99,6 +87,7 @@ do { \
 
 struct zcbor_state_constant;
 
+/** The zcbor_state_t structure is used for both encoding and decoding. */
 typedef struct {
 union {
 	uint8_t *payload_mut;
@@ -115,12 +104,35 @@ union {
 	uint8_t const *payload_end; /**< The end of the payload. This will be
 	                                 checked against payload before
 	                                 processing each element. */
-	bool indefinite_length_array; /**< Is set to true if the decoder is currently
-	                                   decoding the contents of an indefinite-
-	                                   length array. */
 	bool payload_moved; /**< Is set to true while the state is stored as a backup
 	                         if @ref zcbor_update_state is called, since that function
 	                         updates the payload_end of all backed-up states. */
+
+/* This is the "decode state", the part of zcbor_state_t that is only used by zcbor_decode.c. */
+struct {
+	bool indefinite_length_array; /**< Is set to true if the decoder is currently
+	                                   decoding the contents of an indefinite-
+	                                   length array. */
+	bool counting_map_elems; /**< Is set to true while the number of elements of the
+	                              current map are being counted. */
+#ifdef ZCBOR_MAP_SMART_SEARCH
+	uint8_t *map_search_elem_state; /**< Optional flags to use when searching unordered
+	                                     maps. If this is not NULL and map_elem_count
+	                                     is non-zero, this consists of one flag per element
+	                                     in the current map. The n-th bit can be set to 0
+	                                     to indicate that the n-th element in the
+	                                     map should not be searched. These are manipulated
+	                                     via zcbor_elem_processed() or
+	                                     zcbor_unordered_map_search(), and should not be
+	                                     manipulated directly. */
+#else
+	size_t map_elems_processed; /**< The number of elements of an unordered map
+	                                 that have been processed. */
+#endif
+	size_t map_elem_count; /**< Number of elements in the current unordered map.
+	                            This also serves as the number of bits (not bytes)
+	                            in the map_search_elem_state array (when applicable). */
+} decode_state;
 	struct zcbor_state_constant *constant_state; /**< The part of the state that is
 	                                                  not backed up and duplicated. */
 } zcbor_state_t;
@@ -133,7 +145,28 @@ struct zcbor_state_constant {
 #ifdef ZCBOR_STOP_ON_ERROR
 	bool stop_on_error;
 #endif
+	bool enforce_canonical; /**< Fail when decoding if data is non-canonical.
+	                             The default/initial value follows ZCBOR_CANONICAL */
+	bool manually_process_elem; /**< Whether an (unordered map) element should be automatically
+	                                 marked as processed when found via @ref zcbor_search_map_key. */
+#ifdef ZCBOR_MAP_SMART_SEARCH
+	uint8_t *map_search_elem_state_end; /**< The end of the @ref map_search_elem_state buffer. */
+#endif
 };
+
+#ifdef ZCBOR_CANONICAL
+#define ZCBOR_ENFORCE_CANONICAL_DEFAULT true
+#else
+#define ZCBOR_ENFORCE_CANONICAL_DEFAULT false
+#endif
+
+#define ZCBOR_ENFORCE_CANONICAL(state) (state->constant_state \
+	? state->constant_state->enforce_canonical : ZCBOR_ENFORCE_CANONICAL_DEFAULT)
+
+#define ZCBOR_MANUALLY_PROCESS_ELEM_DEFAULT false
+
+#define ZCBOR_MANUALLY_PROCESS_ELEM(state) (state->constant_state \
+	? state->constant_state->manually_process_elem : ZCBOR_MANUALLY_PROCESS_ELEM_DEFAULT)
 
 /** Function pointer type used with zcbor_multi_decode.
  *
@@ -159,24 +192,32 @@ typedef enum
 	ZCBOR_MAJOR_TYPE_SIMPLE = 7, ///! Simple values and floats
 } zcbor_major_type_t;
 
+/** Extract the major type, i.e. the first 3 bits of the header byte. */
+#define ZCBOR_MAJOR_TYPE(header_byte) ((zcbor_major_type_t)(((header_byte) >> 5) & 0x7))
+
+/** Extract the additional info, i.e. the last 5 bits of the header byte. */
+#define ZCBOR_ADDITIONAL(header_byte) ((header_byte) & 0x1F)
 
 /** Convenience macro for failing out of a decoding/encoding function.
 */
 #define ZCBOR_FAIL() \
 do {\
-	zcbor_trace(); \
+	zcbor_log("ZCBOR_FAIL "); \
+	zcbor_trace_file(state); \
 	return false; \
 } while(0)
 
 #define ZCBOR_FAIL_IF(expr) \
 do {\
 	if (expr) { \
+		zcbor_log("ZCBOR_FAIL_IF(" #expr ") "); \
 		ZCBOR_FAIL(); \
 	} \
 } while(0)
 
 #define ZCBOR_ERR(err) \
 do { \
+	zcbor_log("ZCBOR_ERR(%d) ", err); \
 	zcbor_error(state, err); \
 	ZCBOR_FAIL(); \
 } while(0)
@@ -184,6 +225,7 @@ do { \
 #define ZCBOR_ERR_IF(expr, err) \
 do {\
 	if (expr) { \
+		zcbor_log("ZCBOR_ERR_IF(" #expr ", %d) ", err); \
 		ZCBOR_ERR(err); \
 	} \
 } while(0)
@@ -210,10 +252,13 @@ do { \
 #define ZCBOR_VALUE_IS_INDEFINITE_LENGTH 31 ///! The list or map has indefinite length, and will instead be terminated by a 0xFF token.
 
 #define ZCBOR_BOOL_TO_SIMPLE ((uint8_t)20) ///! In CBOR, false/true have the values 20/21
+#define ZCBOR_NIL_VAL ((uint8_t)22)
+#define ZCBOR_UNDEF_VAL ((uint8_t)23)
 
 #define ZCBOR_FLAG_RESTORE 1UL ///! Restore from the backup. Overwrite the current state with the state from the backup.
 #define ZCBOR_FLAG_CONSUME 2UL ///! Consume the backup. Remove the backup from the stack of backups.
-#define ZCBOR_FLAG_TRANSFER_PAYLOAD 4UL ///! Keep the pre-restore payload after restoring.
+#define ZCBOR_FLAG_KEEP_PAYLOAD 4UL ///! Keep the pre-restore payload after restoring.
+#define ZCBOR_FLAG_KEEP_DECODE_STATE 8UL ///! Keep the pre-restore decode state (everything only used for decoding)
 
 #define ZCBOR_SUCCESS 0
 #define ZCBOR_ERR_NO_BACKUP_MEM 1
@@ -230,17 +275,21 @@ do { \
 #define ZCBOR_ERR_WRONG_RANGE 12
 #define ZCBOR_ERR_ITERATIONS 13
 #define ZCBOR_ERR_ASSERTION 14
+#define ZCBOR_ERR_PAYLOAD_OUTDATED 15 ///! Because of a call to @ref zcbor_update_state
+#define ZCBOR_ERR_ELEM_NOT_FOUND 16
+#define ZCBOR_ERR_MAP_MISALIGNED 17
+#define ZCBOR_ERR_ELEMS_NOT_PROCESSED 18
+#define ZCBOR_ERR_NOT_AT_END 19
+#define ZCBOR_ERR_MAP_FLAGS_NOT_AVAILABLE 20
+#define ZCBOR_ERR_INVALID_VALUE_ENCODING 21 ///! When ZCBOR_CANONICAL is defined, and the incoming data is not encoded with minimal length, or uses indefinite length array.
+#define ZCBOR_ERR_CONSTANT_STATE_MISSING 22
 #define ZCBOR_ERR_UNKNOWN 31
 
 /** The largest possible elem_count. */
-#ifdef UINT_FAST32_MAX
-#define ZCBOR_MAX_ELEM_COUNT UINT_FAST32_MAX
-#else
-#define ZCBOR_MAX_ELEM_COUNT ((size_t)(-1L))
-#endif
+#define ZCBOR_MAX_ELEM_COUNT SIZE_MAX
 
 /** Initial value for elem_count for when it just needs to be large. */
-#define ZCBOR_LARGE_ELEM_COUNT (ZCBOR_MAX_ELEM_COUNT - 16)
+#define ZCBOR_LARGE_ELEM_COUNT (ZCBOR_MAX_ELEM_COUNT - 15)
 
 
 /** Take a backup of the current state. Overwrite the current elem_count. */
@@ -278,24 +327,30 @@ bool zcbor_union_end_code(zcbor_state_t *state);
  *  If there is no struct zcbor_state_constant (n_states == 1), error codes are
  *  not available.
  *  This means that you get a state with (n_states - 2) backups.
- *  payload, payload_len, and elem_count are used to initialize the first state.
- *  in the array, which is the state that can be passed to cbor functions.
+ *  payload, payload_len, elem_count, and elem_state are used to initialize the first state.
+ *  The elem_state is only needed for unordered maps, when ZCBOR_MAP_SMART_SEARCH is enabled.
+ *  It is ignored otherwise.
  */
 void zcbor_new_state(zcbor_state_t *state_array, size_t n_states,
-		const uint8_t *payload, size_t payload_len, size_t elem_count);
+		const uint8_t *payload, size_t payload_len, size_t elem_count,
+		uint8_t *elem_state, size_t elem_state_bytes);
 
 /** Do boilerplate entry function procedure.
  *  Initialize states, call function, and check the result.
  */
 int zcbor_entry_function(const uint8_t *payload, size_t payload_len,
 	void *result, size_t *payload_len_out, zcbor_state_t *state, zcbor_decoder_t func,
-	uint_fast32_t n_states, uint_fast32_t elem_count);
+	size_t n_states, size_t elem_count);
 
 #ifdef ZCBOR_STOP_ON_ERROR
-/** Check stored error and fail if present, but only if stop_on_error is true. */
+/** Check stored error and fail if present, but only if stop_on_error is true.
+ *
+ * @retval true   No error found
+ * @retval false  An error was found
+ */
 static inline bool zcbor_check_error(const zcbor_state_t *state)
 {
-	struct zcbor_state_constant  *cs = state->constant_state;
+	struct zcbor_state_constant *cs = state->constant_state;
 	return !(cs && cs->stop_on_error && cs->error);
 }
 #endif
@@ -348,7 +403,7 @@ static inline bool zcbor_payload_at_end(const zcbor_state_t *state)
  *  This function also updates all backups to the new payload_end.
  *  This sets a flag so that @ref zcbor_process_backup fails if a backup is
  *  processed with the flag @ref ZCBOR_FLAG_RESTORE, but without the flag
- *  @ref ZCBOR_FLAG_TRANSFER_PAYLOAD since this would cause an invalid state.
+ *  @ref ZCBOR_FLAG_KEEP_PAYLOAD since this would cause an invalid state.
  *
  *  @param[inout]  state              The current state, will be updated with
  *                                    the new payload pointer.
@@ -415,12 +470,68 @@ bool zcbor_compare_strings(const struct zcbor_string *str1,
  *
  *  @return  The length of the header in bytes (1-9).
  */
-size_t zcbor_header_len(size_t num_elems);
+size_t zcbor_header_len(uint64_t value);
 
-/** Find whether the state is at the end of a list or map.
+/** Like @ref zcbor_header_len but for integer of any size <= 8. */
+size_t zcbor_header_len_ptr(const void *const value, size_t value_len);
+
+/** If a string (header + payload) is encoded into the rest of the payload, how long would it be?
+ *
+ *  Note that a string with this length doesn't necessarily fill the rest of the
+ *  payload. For some payload lengths, e.g. 25, it's impossible to encode a
+ *  string of that total length.
+ *
+ *  @param[in] state  The current state.
+ *
+ *  @return  The length of the string (payload, not including header) in bytes.
  */
-bool zcbor_array_at_end(zcbor_state_t *state);
+size_t zcbor_remaining_str_len(zcbor_state_t *state);
 
+/** Convert a float16 value to float32.
+ *
+ *  @param[in] input  The float16 value stored in a uint16_t.
+ *
+ *  @return  The resulting float32 value.
+ */
+float zcbor_float16_to_32(uint16_t input);
+
+/** Convert a float32 value to float16.
+ *
+ *  @param[in] input  The float32 value.
+ *
+ *  @return  The resulting float16 value as a uint16_t.
+ */
+uint16_t zcbor_float32_to_16(float input);
+
+#ifdef ZCBOR_MAP_SMART_SEARCH
+static inline size_t zcbor_round_up(size_t x, size_t align)
+{
+	return (((x) + (align) - 1) / (align) * (align));
+}
+
+#define ZCBOR_BITS_PER_BYTE 8
+/** Calculate the number of bytes needed to hold @p num_flags 1 bit flags
+ */
+static inline size_t zcbor_flags_to_bytes(size_t num_flags)
+{
+	return zcbor_round_up(num_flags, ZCBOR_BITS_PER_BYTE) / ZCBOR_BITS_PER_BYTE;
+}
+
+/** Calculate the number of zcbor_state_t instances needed to hold @p num_flags 1 bit flags
+ */
+static inline size_t zcbor_flags_to_states(size_t num_flags)
+{
+	return zcbor_round_up(num_flags, sizeof(zcbor_state_t) * ZCBOR_BITS_PER_BYTE)
+			/ (sizeof(zcbor_state_t) * ZCBOR_BITS_PER_BYTE);
+}
+
+#define ZCBOR_FLAG_STATES(n_flags) zcbor_flags_to_states(n_flags)
+
+#else
+#define ZCBOR_FLAG_STATES(n_flags) 0
+#endif
+
+size_t strnlen(const char *, size_t);
 
 #ifdef __cplusplus
 }

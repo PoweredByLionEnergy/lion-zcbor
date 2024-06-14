@@ -1,5 +1,4 @@
-pyelftools==0.26
+pyelftools
 pycodestyle
 west
 ecdsa
-numpy

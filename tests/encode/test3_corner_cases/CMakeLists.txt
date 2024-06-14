@@ -44,6 +44,10 @@ set(py_command
   UnionInt2
   Intmax1
   Intmax2
+  InvalidIdentifiers
+  MapUnionPrimAlias
+  EmptyContainer
+  SingleElemList
   -e
   ${bit_arg}
   --short-names

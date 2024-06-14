@@ -7,7 +7,6 @@
 #include <zephyr/ztest.h>
 #include "pet_decode.h"
 #include "serial/serial_recovery_decode.h"
-#include "zcbor_debug.h" // Enables use of print functions when debugging tests.
 
 uint8_t serial_rec_input1[] = {
 	/* "data" */
@@ -447,7 +446,7 @@ ZTEST(cbor_decode_test3, test_pet)
 	zassert_mem_equal("bar", pet.names[1].value, 3, "Expect first name 'bar'");
 	zassert_equal(8, pet.birthday.len, "Expect len 8 birthday");
 	zassert_mem_equal(exp_birthday, pet.birthday.value, 8, "Expect birthday");
-	zassert_equal(Pet_species_dog, pet.species_choice, "Expect dog");
+	zassert_equal(Pet_species_dog_c, pet.species_choice, "Expect dog");
 }
 
 
@@ -483,23 +482,23 @@ ZTEST(cbor_decode_test3, test_serial1)
 {
 	struct Upload upload;
 	size_t decode_len;
-	bool ret = cbor_decode_Upload(serial_rec_input1,
+	int ret = cbor_decode_Upload(serial_rec_input1,
 			sizeof(serial_rec_input1), &upload, &decode_len);
-	zassert_equal(ZCBOR_SUCCESS, ret, "decoding failed.");
+	zassert_equal(ZCBOR_SUCCESS, ret, "decoding failed: %d.", ret);
 	zassert_equal(sizeof(serial_rec_input1), decode_len, NULL);
 
 	zassert_equal(5, upload.members_count,
 		"expect 5 members");
-	zassert_equal(Member_data, upload.members[0].members
+	zassert_equal(Member_data_c, upload.members[0].members
 		.Member_choice, "expect data 1st");
-	zassert_equal(Member_image, upload.members[1].members
+	zassert_equal(Member_image_c, upload.members[1].members
 		.Member_choice, "expect image 2nd");
-	zassert_equal(Member_len, upload.members[2].members
+	zassert_equal(Member_len_c, upload.members[2].members
 		.Member_choice, "was %d\r\n", upload.members[2].members
 		.Member_choice);
-	zassert_equal(Member_off, upload.members[3].members
+	zassert_equal(Member_off_c, upload.members[3].members
 		.Member_choice, "expect off 4th");
-	zassert_equal(Member_sha, upload.members[4].members
+	zassert_equal(Member_sha_c, upload.members[4].members
 		.Member_choice, "expect sha 5th");
 }
 
@@ -507,22 +506,22 @@ ZTEST(cbor_decode_test3, test_serial2)
 {
 	struct Upload upload;
 	size_t decode_len;
-	bool ret = cbor_decode_Upload(serial_rec_input2,
+	int ret = cbor_decode_Upload(serial_rec_input2,
 			sizeof(serial_rec_input2), &upload, &decode_len);
-	zassert_equal(ZCBOR_SUCCESS, ret, "decoding failed.");
+	zassert_equal(ZCBOR_SUCCESS, ret, "decoding failed: %d.", ret);
 	zassert_equal(sizeof(serial_rec_input2), decode_len, NULL);
 
 	zassert_equal(5, upload.members_count,
 		"expect 5 members");
-	zassert_equal(Member_data, upload.members[0].members
+	zassert_equal(Member_data_c, upload.members[0].members
 		.Member_choice, "expect data 1st");
-	zassert_equal(Member_image, upload.members[1].members
+	zassert_equal(Member_image_c, upload.members[1].members
 		.Member_choice, "expect image 2nd");
-	zassert_equal(Member_len, upload.members[2].members
+	zassert_equal(Member_len_c, upload.members[2].members
 		.Member_choice, "expect len 3rd");
-	zassert_equal(Member_off, upload.members[3].members
+	zassert_equal(Member_off_c, upload.members[3].members
 		.Member_choice, "expect off 4th");
-	zassert_equal(Member_sha, upload.members[4].members
+	zassert_equal(Member_sha_c, upload.members[4].members
 		.Member_choice, "expect sha 5th");
 }
 

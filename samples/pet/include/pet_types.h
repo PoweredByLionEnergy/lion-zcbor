@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Generated using zcbor version 0.7.99
+ * Generated using zcbor version 0.8.99
  * https://github.com/NordicSemiconductor/zcbor
  * Generated with a --default-max-qty of 3
  */
@@ -34,9 +34,9 @@ struct Pet {
 	size_t names_count;
 	struct zcbor_string birthday;
 	enum {
-		Pet_species_cat = 1,
-		Pet_species_dog = 2,
-		Pet_species_other = 3,
+		Pet_species_cat_c = 1,
+		Pet_species_dog_c = 2,
+		Pet_species_other_c = 3,
 	} species_choice;
 };
 

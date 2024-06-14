@@ -6,8 +6,6 @@
 
 cmake_minimum_required(VERSION 3.13.1)
 
-set_property(GLOBAL PROPERTY CSTD c11) # To avoid issues with c99 and -Wpedantic
-
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(test1_unit_tests)
 include(../../cmake/test_template.cmake)
@@ -21,9 +19,19 @@ target_include_directories(zcbor PRIVATE ../../../include)
 
 target_link_libraries(app PRIVATE zcbor)
 
-zephyr_compile_definitions(ZCBOR_STOP_ON_ERROR)
+target_compile_options(zcbor PRIVATE -Wpedantic -Wconversion -Wall -Wextra -Wdouble-promotion)
 
-if (NOT VERBOSE AND CONFIG_MINIMAL_LIBC)
-  # VERBOSE means including printk which doesn't build with these options.
-  target_compile_options(zcbor PRIVATE -Wpedantic -Wconversion -Wall -Wextra -Wdouble-promotion)
-endif()
+file(READ ${CMAKE_CURRENT_LIST_DIR}/../../../zcbor/VERSION ZCBOR_VERSION_STR)
+string(REPLACE "." ";" ZCBOR_VERSION_SPLIT ${ZCBOR_VERSION_STR})
+list(GET ZCBOR_VERSION_SPLIT 0 ZCBOR_VERSION_MAJOR)
+list(GET ZCBOR_VERSION_SPLIT 1 ZCBOR_VERSION_MINOR)
+list(GET ZCBOR_VERSION_SPLIT 2 ZCBOR_VERSION_BUGFIX)
+math(EXPR ZCBOR_VERSION "(${ZCBOR_VERSION_MAJOR} << 24) + (${ZCBOR_VERSION_MINOR} << 16) + (${ZCBOR_VERSION_BUGFIX} << 8)")
+
+zephyr_compile_definitions(
+  ZCBOR_STOP_ON_ERROR
+  TEST_ZCBOR_VERSION_STR="${ZCBOR_VERSION_STR}"
+  TEST_ZCBOR_VERSION=${ZCBOR_VERSION}
+  TEST_ZCBOR_VERSION_MAJOR=${ZCBOR_VERSION_MAJOR}
+  TEST_ZCBOR_VERSION_MINOR=${ZCBOR_VERSION_MINOR}
+  TEST_ZCBOR_VERSION_BUGFIX=${ZCBOR_VERSION_BUGFIX})

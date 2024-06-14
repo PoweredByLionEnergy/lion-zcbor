@@ -25,10 +25,10 @@ p_tests = p_root / 'tests'
 p_readme = p_root / "README.md"
 p_architecture = p_root / "ARCHITECTURE.md"
 p_release_notes = p_root / "RELEASE_NOTES.md"
-p_init_py = p_root / 'zcbor' / '__init__.py'
+p_init_py = p_root / '__init__.py'
 p_zcbor_py = p_root / 'zcbor' / 'zcbor.py'
-p_setup_py = p_root / 'setup.py'
-p_add_helptext = p_root / 'add_helptext.py'
+p_add_helptext = p_root / 'scripts' / 'add_helptext.py'
+p_regenerate_samples = p_root / 'scripts' / 'regenerate_samples.py'
 p_test_zcbor_py = p_tests / 'scripts' / 'test_zcbor.py'
 p_test_versions_py = p_tests / 'scripts' / 'test_versions.py'
 p_test_repo_files_py = p_tests / 'scripts' / 'test_repo_files.py'
@@ -51,7 +51,7 @@ class TestCodestyle(TestCase):
 
     def test_codestyle(self):
         """Run codestyle tests on all Python scripts in the repo."""
-        self.do_codestyle([p_init_py, p_setup_py, p_test_versions_py, p_test_repo_files_py])
+        self.do_codestyle([p_init_py, p_test_versions_py, p_test_repo_files_py, p_add_helptext])
         self.do_codestyle([p_zcbor_py], ignore=['W191', 'E101', 'W503'])
         self.do_codestyle([p_test_zcbor_py], ignore=['E402', 'E501', 'W503'])
 
@@ -70,7 +70,7 @@ class TestSamples(TestCase):
     def cmake_build_run(self, path, build_path):
         if build_path.exists():
             rmtree(build_path)
-        with open(path / 'README.md', 'r') as f:
+        with open(path / 'README.md', 'r', encoding="utf-8") as f:
             contents = f.read()
 
         to_build_patt = r'### To build:.*?```(?P<to_build>.*?)```'
@@ -101,22 +101,15 @@ class TestSamples(TestCase):
         output = self.cmake_build_run(p_pet_sample, p_pet_build)
 
     def test_pet_regenerate(self):
-        files = (list(p_pet_include.iterdir()) + list(p_pet_src.iterdir()) + [p_pet_cmake])
-        contents = "".join(p.read_text() for p in files)
-        tmpdir = Path(mkdtemp())
-        list(os.makedirs(tmpdir / f.relative_to(p_pet_sample).parent, exist_ok=True) for f in files)
-        list(copy2(f, tmpdir / f.relative_to(p_pet_sample)) for f in files)
-        self.popen_test(['cmake', p_pet_sample, "-DREGENERATE_ZCBOR=Y"], cwd=tmpdir)
-        new_contents = "".join(p.read_text() for p in files)
-        list(copy2(tmpdir / f.relative_to(p_pet_sample), f) for f in files)
-        rmtree(tmpdir)
-        self.maxDiff = None
-        self.assertEqual(contents, new_contents)
+        """Check the zcbor-generated code for the "pet" sample"""
+        regenerate = Popen(["python3", p_regenerate_samples, "--check"])
+        regenerate.communicate()
+        self.assertEqual(0, regenerate.returncode)
 
     def test_pet_file_header(self):
         files = (list(p_pet_include.iterdir()) + list(p_pet_src.iterdir()) + [p_pet_cmake])
         for p in [f for f in files if "pet" in f.name]:
-            with p.open('r') as f:
+            with p.open('r', encoding="utf-8") as f:
                 f.readline()  # discard
                 self.assertEqual(
                     f.readline().strip(" *#\n"),
@@ -169,7 +162,7 @@ class TestDocs(TestCase):
         if self.base_url is None:
             raise SkipTest('This test requires the current branch to be pushed to Github.')
 
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         # Use .parent to test relative links (links to repo files):
         relative_path = str(path.relative_to(p_root).parent)
         relative_path = "" if relative_path == "." else relative_path + "/"

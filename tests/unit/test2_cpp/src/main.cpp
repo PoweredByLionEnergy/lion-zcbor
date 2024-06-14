@@ -6,7 +6,7 @@
 
 #include <zcbor_decode.h>
 #include <zcbor_encode.h>
-#include <zephyr/sys/printk.h>
+#include <stdio.h>
 #include <pet_decode.h>
 
 int main(void)
@@ -26,7 +26,7 @@ int main(void)
 	struct zcbor_string dummy_string;
 
 	ZCBOR_STATE_E(state_e, 3, payload, sizeof(payload), 0);
-	ZCBOR_STATE_D(state_d, 3, payload, sizeof(payload), 30);
+	ZCBOR_STATE_D(state_d, 3, payload, sizeof(payload), 30, 0);
 
 	state_e->constant_state->stop_on_error = true;
 	state_d->constant_state->stop_on_error = true;
@@ -44,8 +44,8 @@ int main(void)
 	zcbor_size_encode(state_e, &nine);
 	zcbor_bstr_put_lit(state_e, "Hello");
 	zcbor_tstr_put_lit(state_e, "World");
-	zcbor_tag_encode(state_e, 9);
-	zcbor_tag_encode(state_e, 10);
+	zcbor_tag_put(state_e, 9);
+	zcbor_tag_put(state_e, 10);
 	zcbor_bool_put(state_e, true);
 	zcbor_bool_encode(state_e, &false_);
 	zcbor_float32_put(state_e, 10.5);
@@ -61,11 +61,10 @@ int main(void)
 	zcbor_map_end_encode(state_e, 0);
 	zcbor_list_end_encode(state_e, 1);
 	zcbor_multi_encode(1, (zcbor_encoder_t *)zcbor_int32_put, state_e, (void*)14, 0);
-	zcbor_multi_encode_minmax(1, 1, &one, (zcbor_encoder_t *)zcbor_int32_put, state_e, (void*)15, 0);
-	bool ret = zcbor_present_encode(&one_b, (zcbor_encoder_t *)zcbor_int32_put, state_e, (void*)16);
+	bool ret = zcbor_multi_encode_minmax(1, 1, &one, (zcbor_encoder_t *)zcbor_int32_put, state_e, (void*)15, 0);
 
 	if (!ret) {
-		printk("Encode error: %d\r\n", zcbor_peek_error(state_e));
+		printf("Encode error: %d\r\n", zcbor_peek_error(state_e));
 		return 1;
 	}
 
@@ -99,11 +98,10 @@ int main(void)
 	zcbor_map_end_decode(state_d);
 	zcbor_list_end_decode(state_d);
 	zcbor_multi_decode(1, 1, &one, (zcbor_decoder_t *)zcbor_int32_expect, state_d, (void*)14, 0);
-	zcbor_int32_expect(state_d, 15);
-	ret = zcbor_present_decode(&one_b, (zcbor_decoder_t *)zcbor_int32_expect, state_d, (void*)16);
+	ret = zcbor_present_decode(&one_b, (zcbor_decoder_t *)zcbor_int32_expect, state_d, (void*)15);
 
 	if (!ret) {
-		printk("Decode error: %d\r\n", zcbor_peek_error(state_d));
+		printf("Decode error: %d\r\n", zcbor_peek_error(state_d));
 		return 1;
 	}
 
@@ -116,11 +114,11 @@ int main(void)
 	int int_ret = cbor_decode_Pet(input, sizeof(input), &pet, NULL);
 
 	if (int_ret != ZCBOR_SUCCESS) {
-		printk("Decode error: %d\r\n", int_ret);
+		printf("Decode error: %d\r\n", int_ret);
 		return 1;
 	}
 
-	printk("Success!\r\n");
+	printf("Success!\r\n");
 
 	return 0;
 }

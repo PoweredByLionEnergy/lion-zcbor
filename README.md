@@ -11,7 +11,7 @@ It can for example validate a YAML file against a schema and convert it into CBO
 The code generation part of the tool generates C code based on the given schema.
 The generated code performs CBOR encoding and decoding using the C library, while also validating the data against all the rules in the schema.
 
-The schema language used by zcbor is CDDL (Consise Data Definition Language) which is a powerful human-readable data description language defined in [IETF RFC 8610](https://datatracker.ietf.org/doc/rfc8610/).
+The schema language used by zcbor is CDDL (Concise Data Definition Language) which is a powerful human-readable data description language defined in [IETF RFC 8610](https://datatracker.ietf.org/doc/rfc8610/).
 
 
 Features
@@ -57,7 +57,7 @@ CBOR decoding/encoding library
 The CBOR library can be found in [include/](include) and [src/](src) and can be used directly, by including the files in your project.
 If using zcbor with Zephyr, the library will be available when the [CONFIG_ZCBOR](https://docs.zephyrproject.org/latest/kconfig.html#CONFIG_ZCBOR) config is enabled.
 
-The library is also used by generated code. See the the [Code generation](#code-generation) section for more info about code generation.
+The library is also used by generated code. See the [Code generation](#code-generation) section for more info about code generation.
 
 The C library is C++ compatible.
 
@@ -73,10 +73,15 @@ The `elem_count` member refers to the number of encoded objects in the current l
 Backups are needed for _decoding_ if there are any lists, maps, or CBOR-encoded strings (`zcbor_bstr_*_decode`) in the data.
 Backups are needed for _encoding_ if there are any lists or maps *and* you are using canonical encoding (`ZCBOR_CANONICAL`), or when using the `zcbor_bstr_*_encode` functions.
 
+`n_flags` is used when decoding maps where the order is unknown.
+It allows using the `zcbor_unordered_map_search()` function to search for elements.
+
+See the header files for more information.
+
 ```c
 /** Initialize a decoding state (could include an array of backup states).
  *  After calling this, decode_state[0] is ready to be used with the decoding APIs. */
-ZCBOR_STATE_D(decode_state, n, payload, payload_len, elem_count);
+ZCBOR_STATE_D(decode_state, n, payload, payload_len, elem_count, n_flags);
 
 /** Initialize an encoding state (could include an array of backup states).
  *  After calling this, encode_state[0] is ready to be used with the encoding APIs. */
@@ -92,11 +97,12 @@ If using zcbor with Zephyr, use the [Kconfig options](https://github.com/zephyrp
 
 Name                      | Description
 ------------------------- | -----------
-`ZCBOR_CANONICAL`         | When encoding lists and maps, do not use indefinite length encoding. Enabling `ZCBOR_CANONICAL` increases code size and makes the encoding library more often use state backups.
-`ZCBOR_VERBOSE`           | Print messages on encoding/decoding errors (`zcbor_print()`), and also a trace message (`zcbor_trace()`) for each decoded value, and in each generated function (when using code generation). Requires `printk` as found in Zephyr.
+`ZCBOR_CANONICAL`         | Assume canonical encoding (AKA "deterministically encoded CBOR", ch 4.2.1 in RFC8949). When encoding lists and maps, do not use indefinite length encoding. Enabling `ZCBOR_CANONICAL` increases code size and makes the encoding library more often use state backups. When decoding, if `enforce_canonical` is true, ensure that the incoming data conforms to canonical encoding, i.e. no indefinite length encoding, and always using minimal length encoding (e.g. not using 16 bits to encode a value < 256). Enabling `ZCBOR_CANONICAL` changes the default of `enforce_canonical` from `false` to `true` Note: the map ordering constraint in canonical encoding is not checked.
+`ZCBOR_VERBOSE`           | Print log messages on encoding/decoding errors (`zcbor_log()`), and also a trace message (`zcbor_trace()`) for each decoded value, and in each generated function (when using code generation).
 `ZCBOR_ASSERTS`           | Enable asserts (`zcbor_assert()`). When they fail, the assert statements instruct the current function to return a `ZCBOR_ERR_ASSERTION` error. If `ZCBOR_VERBOSE` is enabled, a message is printed.
 `ZCBOR_STOP_ON_ERROR`     | Enable the `stop_on_error` functionality. This makes all functions abort their execution if called when an error has already happened.
 `ZCBOR_BIG_ENDIAN`        | All decoded values are returned as big-endian. The default is little-endian.
+`ZCBOR_MAP_SMART_SEARCH`  | Applies to decoding of unordered maps. When enabled, a flag is kept for each element in an array, ensuring it is not processed twice. If disabled, a count is kept for map as a whole. Enabling increases code size and memory usage, and requires the state variable to possess the memory necessary for the flags.
 
 
 Python script and module
@@ -126,8 +132,6 @@ Or directly from within the repo.
 python3 <zcbor base>/zcbor/zcbor.py validate -c <CDDL description file> -t <which CDDL type to expect> -i <input data file>
 python3 <zcbor base>/zcbor/zcbor.py convert -c <CDDL description file> -t <which CDDL type to expect> -i <input data file> -o <output data file>
 ```
-
-You can see an example of the conversions in [tests/cases/yaml_compatibility.yaml](tests/cases/yaml_compatibility.yaml) and its CDDL file [tests/cases/yaml_compatibility.cddl](tests/cases/yaml_compatibility.cddl).
 
 Importing zcbor in a Python script
 ----------------------------------
@@ -172,7 +176,7 @@ zcbor code <--decode or --encode or both> -c <CDDL description file(s)> -t <whic
 When you call this, zcbor reads the CDDL files and creates C struct types to match the types described in the CDDL.
 It then creates code that uses the C library to decode CBOR data into the structs, and/or encode CBOR from the data in the structs.
 Finally, it takes the "entry types" (`-t`) and creates a public API function for each of them.
-While doing these things, it will make a number of optimizations, e.g. inlining code for small types and removing ununsed functions.
+While doing these things, it will make a number of optimizations, e.g. inlining code for small types and removing unused functions.
 It outputs the generated code into header and source files and optionally creates a CMake file to build them.
 
 The `zcbor code` command reads one or more CDDL file(s) and generates some or all of these files:
@@ -207,13 +211,13 @@ Usage Example
 
 There are buildable examples in the [samples](samples) directory.
 
-To see how to use the C library directly, see the (hello_world)[samples/hello_world/src/main.c] sample, or the (pet)[samples/pet/src/main.c] sample (look for calls to functions prefixed with `zcbor_`).
+To see how to use the C library directly, see the [hello_world](samples/hello_world/src/main.c) sample, or the [pet](samples/pet/src/main.c) sample (look for calls to functions prefixed with `zcbor_`).
 
-To see how to use code generation, see the (pet)[samples/pet/src/main.c] sample.
+To see how to use code generation, see the [pet](samples/pet/src/main.c) sample.
 
-Look at the (CMakeLists.txt)[samples/pet/CMakeLists.txt] file to see how zcbor is invoked for code generation (and for conversion).
+Look at the [CMakeLists.txt](samples/pet/CMakeLists.txt) file to see how zcbor is invoked for code generation (and for conversion).
 
-To see how to do conversion, see the (pet)[samples/pet/CMakeLists.txt] sample.
+To see how to do conversion, see the [pet](samples/pet/CMakeLists.txt) sample.
 
 Below are some additional examples of how to invoke zcbor for code generation and for converting/validating
 
@@ -303,7 +307,7 @@ Literals can be used instead of the base type names:
 Base types can also be restricted in other ways:
 
  - `.size`: Works for integers and strings. E.g. `Foo = uint .size 4` where Foo is a uint exactly 4 bytes long.
- - `.cbor`/`.cborseq`: E.g. `Foo = bstr .cbor Bar` where Foo is a bstr whose contents must be CBOR data decodeable as the Bar type.
+ - `.cbor`/`.cborseq`: E.g. `Foo = bstr .cbor Bar` where Foo is a bstr whose contents must be CBOR data decodable as the Bar type.
 
 An element can be repeated:
 
@@ -442,8 +446,8 @@ options:
   -c CDDL, --cddl CDDL  Path to one or more input CDDL file(s). Passing
                         multiple files is equivalent to concatenating them.
   --no-prelude          Exclude the standard CDDL prelude from the build. The
-                        prelude can be viewed at zcbor/cddl/prelude.cddl in
-                        the repo, or together with the script.
+                        prelude can be viewed at zcbor/prelude.cddl in the
+                        repo, or together with the script.
   -v, --verbose         Print more information while parsing CDDL and
                         generating code.
   --default-max-qty DEFAULT_MAX_QTY, --dq DEFAULT_MAX_QTY
@@ -518,7 +522,9 @@ options:
                         union members.
   --file-header FILE_HEADER
                         Header to be included in the comment at the top of
-                        generated C files, e.g. copyright.
+                        generated files, e.g. copyright. Can be a string or a
+                        path to a file. If interpreted as a path to an
+                        existing file, the file's contents will be used.
 
 ```
 
@@ -539,8 +545,8 @@ options:
   -c CDDL, --cddl CDDL  Path to one or more input CDDL file(s). Passing
                         multiple files is equivalent to concatenating them.
   --no-prelude          Exclude the standard CDDL prelude from the build. The
-                        prelude can be viewed at zcbor/cddl/prelude.cddl in
-                        the repo, or together with the script.
+                        prelude can be viewed at zcbor/prelude.cddl in the
+                        repo, or together with the script.
   -v, --verbose         Print more information while parsing CDDL and
                         generating code.
   -i INPUT, --input INPUT
@@ -592,8 +598,8 @@ options:
   -c CDDL, --cddl CDDL  Path to one or more input CDDL file(s). Passing
                         multiple files is equivalent to concatenating them.
   --no-prelude          Exclude the standard CDDL prelude from the build. The
-                        prelude can be viewed at zcbor/cddl/prelude.cddl in
-                        the repo, or together with the script.
+                        prelude can be viewed at zcbor/prelude.cddl in the
+                        repo, or together with the script.
   -v, --verbose         Print more information while parsing CDDL and
                         generating code.
   -i INPUT, --input INPUT

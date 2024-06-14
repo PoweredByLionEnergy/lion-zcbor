@@ -1,17 +1,96 @@
-# zcbor v. 0.7.99
+# zcbor v. 0.8.1 (2024-01-26)
 
 Any new bugs, requests, or missing features should be reported as [Github issues](https://github.com/NordicSemiconductor/zcbor/issues).
 
+See also the [release notes for 0.8.0](#zcbor-v-080-2024-01-09) below.
+
 ## Improvements:
 
+ * zcbor.py: Use zcbor_uint_decode() when decoding only positive enums
+ * zcbor_common.h: Add ZCBOR_VERSION macro
+
 ## Bugfixes:
+
+ * zcbor_common.h: Add forward declaration for strnlen()
+ * zcbor.py: Fix conversion of UINT8_MAX to avoid script errors when using e.g. 255 in CDDL
+ * zcbor_print.h: Fix iterator type and print formats to avoid compiler warnings
 
 ## Unsupported CDDL features
 Not all features outlined in the CDDL specs [RFC8610](https://datatracker.ietf.org/doc/html/rfc8610), [RFC9090](https://datatracker.ietf.org/doc/html/rfc9090), and [RFC9165](https://datatracker.ietf.org/doc/html/rfc9165) are supported by zcbor.
 The following is a list of limitations and missing features:
 
- * Map elements in data must appear in the same order as they appear in the CDDL.
- * C API doesn't support searching through a map.
+ * Using `&()` to turn groups into choices (unions). `&()` is supported when used with `.bits`.
+ * Representation Types (`#x.y`), except for tags (`#6.y(foo)`) which are supported.
+ * Unwrapping (`~`)
+ * The control operators `.regexp`, `.ne`, `.default`, and `.within` from RFC8610.
+ * The control operators `.sdnv`, `.sdnvseq`, and `.oid` from RFC9090.
+ * The control operators `.plus`, `.cat`, `.det`, `.abnf`, `.abnfb`, and `.feature` from RFC9165.
+ * Generics (`foo<a, b>`).
+ * Using `:` for map keys.
+ * Cuts, either via `^` or implicitly via `:`.
+ * Most of the "Extended Diagnostic Notation" is unsupported.
+
+
+# zcbor v. 0.8.0 (2024-01-09)
+
+Any new bugs, requests, or missing features should be reported as [Github issues](https://github.com/NordicSemiconductor/zcbor/issues).
+
+## Improvements:
+ * C library: Add support for searching for elements in a map.
+ * Overhaul zcbor logging/printing
+   * Refactor printing of errors from generated functions
+   * zcbor_print.h: Improve zcbor_trace() and other tracing
+   * zcbor_print.h: Move from printk to printf
+   * Rename zcbor_print() to zcbor_log()
+   * zcbor_print.h: Move printing code to a new file zcbor_print.h
+   * zcbor_debug.h: Add function for getting error string and printing it
+ * Performance improvements
+   * zcbor.py: Refactor the regex matching to fix label and remove all_types_regex
+   * zcbor.py: Merge regexes for pure types without values
+   * zcbor.py: Add a cache for compiled regex patterns
+   * zcbor.py: Don't regenerate the big list of regexes every call
+   * zcbor_encode: Simplify value_encode() by using the new zcbor_header_len
+   * zcbor_decode.c: Streamline value_extract
+   * zcbor_common: Refactor zcbor_header_len
+   * zcbor.py: Don't use zcbor_present_encode()
+   * zcbor_common: Add a zcbor_entry_function helper
+ * Code generation name improvements:
+   * zcbor.py: Make generated variable names C-compatible.
+   * zcbor.py: Change name of generated choice enum members to add a '_c'
+   * Avoid leading and trailing as well as repeated underscores
+ * API cleanup/improvements:
+   * include: Rearrange and improve zcbor_decode.h and zcbor_encode.h
+   * zcbor_encode: Change zcbor_tag_encode to take a pointer argument
+   * zcbor_common: Rename ZCBOR_FLAG_TRANSFER_PAYLOAD to ZCBOR_FLAG_KEEP_PAYLOAD
+   * zcbor_decode: Add _pexpect() functions
+ * Internal cleanup:
+   * zcbor_encode, zcbor_decode: Move inline functions from header files
+   * zcbor_decode.c: Move MAJOR_TYPE() and ADDITIONAL() macros to zcbor_common.h
+   * src: Abstract float16 conversion and move it to zcbor_common.c
+   * zcbor_common: Add ZCBOR_FLAG_KEEP_DECODE_STATE to zcbor_process_backup()
+   * Move zcbor_array_at_end() from zcbor_common to zcbor_decode
+ * Move from setup.py to pyproject.toml for creation of zcbor packages
+ * zcbor_decode: Add validation that data follows canonical CBOR rules
+ * zcbor.py: Change the label regex to accept non-latin characters
+ * C library: Change usage of strlen to use strnlen
+
+## Bugfixes:
+ * zcbor.py: Fix range_checks for 'OTHER' type
+ * zcbor_decode.c: Fix "'num_decode' may be used uninitialized"
+ * zcbor.py: Generate cmake files with linux paths on Windows
+ * Remove references to uint_fast32_t
+ * Use ZCBOR_BIG_ENDIAN instead of CONFIG_BIG_ENDIAN
+ * zcbor.py: Fix cborhex generation so it generates newlines instead of spaces
+ * zcbor.py: Adjust the lower bound on negative numbers.
+ * zcbor_encode, zcbor_decode: fix double promotion warnings
+ * zcbor_print.h: Add missing errors to zcbor_error_str()
+ * zcbor_print.h: Fix memcmp expression
+ * zcbor.py: DataTranslator: fix type checking
+
+## Unsupported CDDL features
+Not all features outlined in the CDDL specs [RFC8610](https://datatracker.ietf.org/doc/html/rfc8610), [RFC9090](https://datatracker.ietf.org/doc/html/rfc9090), and [RFC9165](https://datatracker.ietf.org/doc/html/rfc9165) are supported by zcbor.
+The following is a list of limitations and missing features:
+
  * Using `&()` to turn groups into choices (unions). `&()` is supported when used with `.bits`.
  * Representation Types (`#x.y`), except for tags (`#6.y(foo)`) which are supported.
  * Unwrapping (`~`)

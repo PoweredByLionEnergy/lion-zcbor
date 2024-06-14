@@ -7,28 +7,11 @@
 #include <zephyr/ztest.h>
 #include <pet_encode.h>
 #include <zcbor_encode.h>
-#include <zcbor_debug.h> // Enables use of print functions when debugging tests.
 
-
-#define CONCAT_BYTE(a,b) a ## b
-
-/* LIST() adds a start byte for a list with 'num' elements.
- * MAP() does the same, but for a map.
- * END adds an end byte for the list/map.
- *
- * With ZCBOR_CANONICAL, the start byte contains the list, so no end byte is
- * needed. Without ZCBOR_CANONICAL, the start byte is the same no matter
- * the number of elements, so it needs an explicit end byte.
- */
 #ifndef ZCBOR_CANONICAL
-#define LIST(num) 0x9F
-#define MAP(num) 0xBF
-#define END 0xFF,
-#else
-#define LIST(num) CONCAT_BYTE(0x8, num)
-#define MAP(num) CONCAT_BYTE(0xA, num)
-#define END
+#define TEST_INDEFINITE_LENGTH_ARRAYS
 #endif
+#include <common_test.h>
 
 
 /* This test uses generated code to encode a 'Pet' instance. It populates the
@@ -41,7 +24,7 @@ ZTEST(cbor_encode_test2, test_pet)
 		.names = {{.value = "foo", .len = 3}, {.value = "bar", .len = 3}},
 		.names_count = 2,
 		.birthday = {.value = (uint8_t[]){1,2,3,4,5,6,7,8}, .len = 8},
-		.species_choice = Pet_species_dog
+		.species_choice = Pet_species_dog_c
 	};
 	uint8_t exp_output[] = {
 		LIST(3),

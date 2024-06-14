@@ -6,7 +6,7 @@
 
 #include <zephyr/ztest.h>
 #include "manifest2_decode.h"
-#include "zcbor_debug.h" // Enables use of print functions when debugging tests.
+#include "zcbor_print.h"
 
 
 /* draft-ietf-suit-manifest-02 Example 0 */
@@ -45,15 +45,15 @@ ZTEST(cbor_decode_test2, test_5)
 	uint8_t expected_component1[] = {0x00, 0x34, 0x01};
 	int res;
 
-	zcbor_print("test_vector at: 0x%zu\r\n", (size_t)test_vector1);
-	zcbor_print("test_vector end at: 0x%zu\r\n",
+	zcbor_log("test_vector at: 0x%zu\r\n", (size_t)test_vector1);
+	zcbor_log("test_vector end at: 0x%zu\r\n",
 				((size_t)test_vector1) + sizeof(test_vector1));
 	memset(&outerwrapper1, 0, sizeof(outerwrapper1));
 	res = cbor_decode_SUIT_Outer_Wrapper(test_vector1, sizeof(test_vector1),
 						&outerwrapper1, &decode_len);
 	zassert_equal(ZCBOR_SUCCESS, res, "top-level decoding failed.");
 	zassert_equal(sizeof(test_vector1), decode_len, NULL);
-	zassert_equal(SUIT_Manifest_Wrapped_suit_manifest, outerwrapper1
+	zassert_equal(SUIT_Manifest_Wrapped_suit_manifest_c, outerwrapper1
 			.SUIT_Outer_Wrapper_SUIT_Manifest_Wrapped_m
 			.SUIT_Manifest_Wrapped_choice,
 			"wrong manifest variant");
@@ -125,7 +125,7 @@ ZTEST(cbor_decode_test2, test_5)
 			sizeof(expected_component1),
 			"component elem 1 doesn't match.");
 
-	zcbor_print("\r\n");
+	zcbor_log("\r\n");
 	zassert_equal(1, manifest
 			->SUIT_Manifest_suit_common
 			.SUIT_Manifest_suit_common_cbor
@@ -157,7 +157,7 @@ ZTEST(cbor_decode_test2, test_5)
 			.SUIT_Command_Sequence_SUIT_Command_m_count,
 			"Should be one command (was %d).", sequence
 			.SUIT_Command_Sequence_SUIT_Command_m_count);
-	zassert_equal(SUIT_Command_SUIT_Directive_m, sequence
+	zassert_equal(SUIT_Command_SUIT_Directive_m_c, sequence
 			.SUIT_Command_Sequence_SUIT_Command_m[0]
 			.SUIT_Command_choice,
 			"Should be a directive.");
@@ -166,7 +166,7 @@ ZTEST(cbor_decode_test2, test_5)
 			.SUIT_Command_SUIT_Directive_m
 			.suit_directive_set_parameters_m_l_map_SUIT_Parameters_m_count,
 			"Should be two vars (parameters).");
-	zcbor_print("\r\n");
+	zcbor_log("\r\n");
 
 	memset(&sequence, 0, sizeof(sequence));
 	res = cbor_decode_SUIT_Command_Sequence(

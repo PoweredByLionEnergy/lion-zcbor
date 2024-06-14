@@ -6,29 +6,11 @@
 
 #include <zephyr/ztest.h>
 #include "senml_encode.h"
-#include "zcbor_debug.h" // Enables use of print functions when debugging tests.
 
-
-
-#define CONCAT_BYTE(a,b) a ## b
-
-/* LIST() adds a start byte for a list with 'num' elements.
- * MAP() does the same, but for a map.
- * END adds an end byte for the list/map.
- *
- * With ZCBOR_CANONICAL, the start byte contains the list, so no end byte is
- * needed. Without ZCBOR_CANONICAL, the start byte is the same no matter
- * the number of elements, so it needs an explicit end byte.
- */
 #ifndef ZCBOR_CANONICAL
-#define LIST(num) 0x9F
-#define MAP(num) 0xBF
-#define END 0xFF,
-#else
-#define LIST(num) CONCAT_BYTE(0x8, num)
-#define MAP(num) CONCAT_BYTE(0xA, num)
-#define END
+#define TEST_INDEFINITE_LENGTH_ARRAYS
 #endif
+#include <common_test.h>
 
 ZTEST(cbor_encode_test4, test_senml)
 {
@@ -44,7 +26,7 @@ ZTEST(cbor_encode_test4, test_senml)
 			.record_t_present = 1,
 			.record_union = {
 				.union_vb = true,
-				.record_union_choice = union_vb,
+				.record_union_choice = union_vb_c,
 			},
 			.record_union_present = 1,
 			.record_key_value_pair_m_count = 0,

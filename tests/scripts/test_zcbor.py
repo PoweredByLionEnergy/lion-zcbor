@@ -15,6 +15,9 @@ import cbor2
 from platform import python_version_tuple
 from sys import platform, exit
 from yaml import safe_load
+from tempfile import mkdtemp
+from shutil import rmtree
+from os import linesep
 
 
 try:
@@ -22,7 +25,7 @@ try:
 except ImportError:
     print("""
 The zcbor package must be installed to run these tests.
-During development, install with `python3 setup.py develop` to install in a way
+During development, install with `pip3 install -e .` to install in a way
 that picks up changes in the files without having to reinstall.
 """)
     exit(1)
@@ -30,35 +33,38 @@ that picks up changes in the files without having to reinstall.
 
 p_root = Path(__file__).absolute().parents[2]
 p_tests = Path(p_root, 'tests')
-p_manifest12 = Path(p_tests, 'cases', 'manifest12.cddl')
-p_manifest14 = Path(p_tests, 'cases', 'manifest14.cddl')
-p_manifest16 = Path(p_tests, 'cases', 'manifest16.cddl')
-p_manifest20 = Path(p_tests, 'cases', 'manifest20.cddl')
-p_test_vectors12 = tuple(Path(p_tests, 'cases', f'manifest12_example{i}.cborhex') for i in range(6))
-p_test_vectors14 = tuple(Path(p_tests, 'cases', f'manifest14_example{i}.cborhex') for i in range(6))
-p_test_vectors16 = tuple(Path(p_tests, 'cases', f'manifest14_example{i}.cborhex') for i in range(6))  # Identical to manifest14.
-p_test_vectors20 = tuple(Path(p_tests, 'cases', f'manifest20_example{i}.cborhex') for i in range(6))
-p_optional = Path(p_tests, 'cases', 'optional.cddl')
-p_corner_cases = Path(p_tests, 'cases', 'corner_cases.cddl')
-p_cose = Path(p_tests, 'cases', 'cose.cddl')
-p_manifest14_priv = Path(p_tests, 'cases', 'manifest14.priv')
-p_manifest14_pub = Path(p_tests, 'cases', 'manifest14.pub')
-p_map_bstr_cddl = Path(p_tests, 'cases', 'map_bstr.cddl')
-p_map_bstr_yaml = Path(p_tests, 'cases', 'map_bstr.yaml')
-p_yaml_compat_cddl = Path(p_tests, 'cases', 'yaml_compatibility.cddl')
-p_yaml_compat_yaml = Path(p_tests, 'cases', 'yaml_compatibility.yaml')
+p_cases = Path(p_tests, 'cases')
+p_manifest12 = Path(p_cases, 'manifest12.cddl')
+p_manifest14 = Path(p_cases, 'manifest14.cddl')
+p_manifest16 = Path(p_cases, 'manifest16.cddl')
+p_manifest20 = Path(p_cases, 'manifest20.cddl')
+p_test_vectors12 = tuple(Path(p_cases, f'manifest12_example{i}.cborhex') for i in range(6))
+p_test_vectors14 = tuple(Path(p_cases, f'manifest14_example{i}.cborhex') for i in range(6))
+p_test_vectors16 = tuple(Path(p_cases, f'manifest14_example{i}.cborhex') for i in range(6))  # Identical to manifest14.
+p_test_vectors20 = tuple(Path(p_cases, f'manifest20_example{i}.cborhex') for i in range(6))
+p_optional = Path(p_cases, 'optional.cddl')
+p_corner_cases = Path(p_cases, 'corner_cases.cddl')
+p_cose = Path(p_cases, 'cose.cddl')
+p_manifest14_priv = Path(p_cases, 'manifest14.priv')
+p_manifest14_pub = Path(p_cases, 'manifest14.pub')
+p_map_bstr_cddl = Path(p_cases, 'map_bstr.cddl')
+p_map_bstr_yaml = Path(p_cases, 'map_bstr.yaml')
+p_yaml_compat_cddl = Path(p_cases, 'yaml_compatibility.cddl')
+p_yaml_compat_yaml = Path(p_cases, 'yaml_compatibility.yaml')
+p_pet_cddl = Path(p_cases, 'pet.cddl')
 p_README = Path(p_root, 'README.md')
-p_prelude = Path(p_root, 'zcbor', 'cddl', 'prelude.cddl')
+p_prelude = Path(p_root, 'zcbor', 'prelude.cddl')
+p_VERSION = Path(p_root, 'zcbor', 'VERSION')
 
 
 class TestManifest(TestCase):
     """Class for testing examples against CDDL for various versions of the SUIT manifest spec."""
     def decode_file(self, data_path, *cddl_paths):
-        data = bytes.fromhex(data_path.read_text().replace("\n", ""))
+        data = bytes.fromhex(data_path.read_text(encoding="utf-8").replace("\n", ""))
         self.decode_string(data, *cddl_paths)
 
     def decode_string(self, data_string, *cddl_paths):
-        cddl_str = " ".join((Path(p).read_text() for p in cddl_paths))
+        cddl_str = " ".join((Path(p).read_text(encoding="utf-8") for p in cddl_paths))
         self.my_types = zcbor.DataTranslator.from_cddl(cddl_str, 16).my_types
         cddl = self.my_types["SUIT_Envelope_Tagged"]
         self.decoded = cddl.decode_str(data_string)
@@ -200,7 +206,7 @@ def loads(string):
 class TestEx0Manifest14(TestManifest):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.key = VerifyingKey.from_pem(p_manifest14_pub.read_text())
+        self.key = VerifyingKey.from_pem(p_manifest14_pub.read_text(encoding="utf-8"))
 
     def do_test_authentication(self):
         self.assertEqual("COSE_Sign1_Tagged_m", self.decoded.suit_authentication_wrapper.SUIT_Authentication_Block_bstr[0].union_choice)
@@ -266,7 +272,7 @@ class TestEx1Manifest14(TestManifest):
         self.assertEqual(2, len(self.decoded.suit_manifest.suit_common.suit_common_sequence[0].suit_common_sequence.union[0].SUIT_Common_Commands_m.suit_directive_override_parameters_m_l.map[0]))
 
     def test_cbor_pen(self):
-        data = bytes.fromhex(p_test_vectors14[1].read_text().replace("\n", ""))
+        data = bytes.fromhex(p_test_vectors14[1].read_text(encoding="utf-8").replace("\n", ""))
         struct = loads(data)
         struct2 = loads(struct.value[3])  # manifest
         struct3 = loads(struct2[3])  # common sequence
@@ -283,7 +289,7 @@ class TestEx1Manifest14(TestManifest):
 
 class TestEx1InvManifest14(TestManifest):
     def test_inv0(self):
-        data = bytes.fromhex(p_test_vectors14[1].read_text().replace("\n", ""))
+        data = bytes.fromhex(p_test_vectors14[1].read_text(encoding="utf-8").replace("\n", ""))
         struct = loads(data)
         struct2 = loads(struct.value[2])  # authentication
         struct3 = loads(struct2[1])
@@ -299,7 +305,7 @@ class TestEx1InvManifest14(TestManifest):
             assert False, "Should have failed validation"
 
     def test_inv1(self):
-        data = bytes.fromhex(p_test_vectors14[1].read_text().replace("\n", ""))
+        data = bytes.fromhex(p_test_vectors14[1].read_text(encoding="utf-8").replace("\n", ""))
         struct = loads(data)
         struct2 = loads(struct.value[3])  # manifest
         struct2[1] += 1  # invalid manifest version
@@ -313,7 +319,7 @@ class TestEx1InvManifest14(TestManifest):
             assert False, "Should have failed validation"
 
     def test_inv2(self):
-        data = bytes.fromhex(p_test_vectors14[1].read_text().replace("\n", ""))
+        data = bytes.fromhex(p_test_vectors14[1].read_text(encoding="utf-8").replace("\n", ""))
         struct = loads(data)
         struct.value[23] = b''  # Invalid integrated payload key
         data = dumps(struct)
@@ -325,7 +331,7 @@ class TestEx1InvManifest14(TestManifest):
             assert False, "Should have failed validation"
 
     def test_inv3(self):
-        data = bytes.fromhex(p_test_vectors14[1].read_text().replace("\n", ""))
+        data = bytes.fromhex(p_test_vectors14[1].read_text(encoding="utf-8").replace("\n", ""))
         struct = loads(data)
         struct2 = loads(struct.value[3])  # manifest
         struct3 = loads(struct2[3])  # common sequence
@@ -410,7 +416,7 @@ class TestEx5Manifest14(TestManifest):
 
 class TestEx5InvManifest14(TestManifest):
     def test_invalid_rep_policy(self):
-        data = bytes.fromhex(p_test_vectors14[5].read_text().replace("\n", ""))
+        data = bytes.fromhex(p_test_vectors14[5].read_text(encoding="utf-8").replace("\n", ""))
         struct = loads(data)
         struct2 = loads(struct.value[3])  # manifest
         struct3 = loads(struct2[10])  # suit_validate
@@ -582,7 +588,7 @@ class TestCLI(PopenTest):
 
         self.maxDiff = None
 
-        with open(p_test_vectors12[n], 'r') as f:
+        with open(p_test_vectors12[n], 'r', encoding="utf-8") as f:
             self.assertEqual(sub(r"\W+", "", f.read()), sub(r"\W+", "", stdout4.decode("utf-8")))
 
     def test_0(self):
@@ -625,10 +631,51 @@ class TestCLI(PopenTest):
             b"unless --output-cmake is specified.",
             stderr2)
 
+    def do_test_file_header(self, from_file=False):
+        tempd = Path(mkdtemp())
+        file_header = """Sample
+
+file header"""
+        if from_file:
+            (tempd / "file_header.txt").write_text(file_header, encoding="utf-8")
+            file_header_input = str(tempd / "file_header.txt")
+        else:
+            file_header_input = file_header
+
+        _, __ = self.popen_test(["zcbor", "code", "--cddl", str(p_pet_cddl), "-t", "Pet", "--output-cmake", str(tempd / "pet.cmake"), "-d", "-e", "--file-header", (file_header_input), "--dq", "5"], "")
+        exp_cmake_header = f"""#
+# Sample
+#
+# file header
+#
+# Generated using zcbor version {p_VERSION.read_text(encoding="utf-8")}
+# https://github.com/NordicSemiconductor/zcbor
+# Generated with a --default-max-qty of 5
+#""".splitlines()
+        exp_c_header = f"""/*
+ * Sample
+ *
+ * file header
+ *
+ * Generated using zcbor version {p_VERSION.read_text(encoding="utf-8")}
+ * https://github.com/NordicSemiconductor/zcbor
+ * Generated with a --default-max-qty of 5
+ */""".splitlines()
+        self.assertEqual(exp_cmake_header, (tempd / "pet.cmake").read_text(encoding="utf-8").splitlines()[:9])
+        for p in (tempd / "src" / "pet_decode.c", tempd / "src" / "pet_encode.c",
+                  tempd / "include" / "pet_decode.h", tempd / "include" / "pet_encode.h",
+                  tempd / "include" / "pet_types.h"):
+            self.assertEqual(exp_c_header, p.read_text(encoding="utf-8").splitlines()[:9])
+        rmtree(tempd)
+
+    def test_file_header(self):
+        self.do_test_file_header()
+        self.do_test_file_header(from_file=True)
+
 
 class TestOptional(TestCase):
     def test_optional_0(self):
-        with open(p_optional, 'r') as f:
+        with open(p_optional, 'r', encoding="utf-8") as f:
             cddl_res = zcbor.DataTranslator.from_cddl(f.read(), 16)
         cddl = cddl_res.my_types['cfg']
         test_yaml = """
@@ -643,7 +690,7 @@ class TestOptional(TestCase):
 class TestUndefined(TestCase):
     def test_undefined_0(self):
         cddl_res = zcbor.DataTranslator.from_cddl(
-            p_prelude.read_text() + '\n' + p_corner_cases.read_text(), 16)
+            p_prelude.read_text(encoding="utf-8") + '\n' + p_corner_cases.read_text(encoding="utf-8"), 16)
         cddl = cddl_res.my_types['Simples']
         test_yaml = "[true, false, true, null, [zcbor_undefined]]"
 
@@ -657,9 +704,9 @@ class TestUndefined(TestCase):
 class TestFloat(TestCase):
     def test_float_0(self):
         cddl_res = zcbor.DataTranslator.from_cddl(
-            p_prelude.read_text() + '\n' + p_corner_cases.read_text(), 16)
+            p_prelude.read_text(encoding="utf-8") + '\n' + p_corner_cases.read_text(encoding="utf-8"), 16)
         cddl = cddl_res.my_types['Floats']
-        test_yaml = f"[3.1415, 1234567.89, 0.000123, 3.1415, 2.71828, 5.0, {1/3}]"
+        test_yaml = f"[3.1415, 1234567.89, 0.000123, 3.1415, 2.71828, 5.0, {1 / 3}]"
 
         decoded = cddl.decode_str_yaml(test_yaml)
         self.assertEqual(3.1415, decoded.float_16)
@@ -679,20 +726,20 @@ class TestYamlCompatibility(PopenTest):
         self.popen_test(["zcbor", "validate", "-c", p_yaml_compat_cddl, "-i", p_yaml_compat_yaml, "-t", "Yaml_compatibility_example", "--yaml-compatibility"])
         stdout1, _ = self.popen_test(["zcbor", "convert", "-c", p_yaml_compat_cddl, "-i", p_yaml_compat_yaml, "-o", "-", "-t", "Yaml_compatibility_example", "--yaml-compatibility"])
         stdout2, _ = self.popen_test(["zcbor", "convert", "-c", p_yaml_compat_cddl, "-i", "-", "-o", "-", "--output-as", "yaml", "-t", "Yaml_compatibility_example", "--yaml-compatibility"], stdout1)
-        self.assertEqual(safe_load(stdout2), safe_load(p_yaml_compat_yaml.read_text()))
+        self.assertEqual(safe_load(stdout2), safe_load(p_yaml_compat_yaml.read_text(encoding="utf-8")))
 
 
 class TestIntmax(TestCase):
     def test_intmax1(self):
         cddl_res = zcbor.DataTranslator.from_cddl(
-            p_prelude.read_text() + '\n' + p_corner_cases.read_text(), 16)
+            p_prelude.read_text(encoding="utf-8") + '\n' + p_corner_cases.read_text(encoding="utf-8"), 16)
         cddl = cddl_res.my_types['Intmax1']
         test_yaml = f"[-128, 127, 255, -32768, 32767, 65535, -2147483648, 2147483647, 4294967295, -9223372036854775808, 9223372036854775807, 18446744073709551615]"
         decoded = cddl.decode_str_yaml(test_yaml)
 
     def test_intmax2(self):
         cddl_res = zcbor.DataTranslator.from_cddl(
-            p_prelude.read_text() + '\n' + p_corner_cases.read_text(), 16)
+            p_prelude.read_text(encoding="utf-8") + '\n' + p_corner_cases.read_text(encoding="utf-8"), 16)
         cddl = cddl_res.my_types['Intmax2']
         test_yaml1 = f"[-128, 0, -32768, 0, -2147483648, 0, -9223372036854775808, 0]"
         decoded = cddl.decode_str_yaml(test_yaml1)
@@ -715,6 +762,18 @@ class TestIntmax(TestCase):
         self.assertEqual(decoded.UINT_32, 4294967295)
         self.assertEqual(decoded.INT_64, 9223372036854775807)
         self.assertEqual(decoded.UINT_64, 18446744073709551615)
+
+
+class TestInvalidIdentifiers(TestCase):
+    def test_invalid_identifiers0(self):
+        cddl_res = zcbor.DataTranslator.from_cddl(
+            p_prelude.read_text(encoding="utf-8") + '\n' + p_corner_cases.read_text(encoding="utf-8"), 16)
+        cddl = cddl_res.my_types['InvalidIdentifiers']
+        test_yaml = "['1one', 2, '{[a-z]}']"
+        decoded = cddl.decode_str_yaml(test_yaml)
+        self.assertTrue(decoded.f_1one_tstr)
+        self.assertTrue(decoded.f_)
+        self.assertTrue(decoded.a_z_tstr)
 
 
 if __name__ == "__main__":
